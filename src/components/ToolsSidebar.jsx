@@ -7,7 +7,7 @@ function ToolsSidebar({
   setShowTextEditor,
   newText,
   setNewText,
-  addTextOverlay,
+  addTextOverlay, 
   textStyle,
   setTextStyle,
   formatTime,
@@ -41,7 +41,7 @@ function ToolsSidebar({
             style={{ 
               padding: "5px 10px", 
               cursor: "pointer",
-              background: activeTool === tool ? "#007bff" : "#f0f0f0",
+              background: activeTool === tool ? "#ff4d94" : "#bbbbccff",
               color: activeTool === tool ? "white" : "black",
               border: "1px solid #ccc"
             }}

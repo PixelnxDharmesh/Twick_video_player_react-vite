@@ -37,7 +37,7 @@ export async function exportVideo({ videoRef, textOverlays, canvasOptions, proce
       if (processingInfo.type === 'trim') {
         startTime = processingInfo.start;
         endTime = processingInfo.end;
-      } else if (processingInfo.type === 'cut') {
+      } else if (processingInfo.type === 'cut') {     
         segments = processingInfo.segments;
         // For cut, we'll process the first segment (in a real app, you'd concatenate all segments)
         if (segments.length > 0) {

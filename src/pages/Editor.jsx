@@ -372,16 +372,21 @@ function Editor() {
             )}
           </div>
 
-          <Timeline
-            currentTime={currentTime}
-            duration={duration}
-            setCurrentTime={setCurrentTime}
-            videoRef={videoRef}
-            // Pass processing info to timeline
-            trimStart={isTrimmed ? trimStart : 0}
-            trimEnd={isTrimmed ? trimEnd : duration}
-            cutPoints={isCut ? cutPoints : []}
-          />
+<Timeline
+  currentTime={currentTime}
+  duration={duration}
+  setCurrentTime={setCurrentTime}
+  videoRef={videoRef}
+  videoSource={videoSource}
+  textOverlays={textOverlays}
+  trimStart={trimStart}
+  trimEnd={trimEnd}
+  cutPoints={cutPoints}
+  isTrimmed={isTrimmed}
+  isCut={isCut}
+  setTrimStart={setTrimStart}
+  setTrimEnd={setTrimEnd}
+/>
 
           <Controls
             isPlaying={isPlaying}
