@@ -7,13 +7,13 @@ function ToolsSidebar({
   setShowTextEditor,
   newText,
   setNewText,
-  addTextOverlay, 
+  addTextOverlay,
   textStyle,
   setTextStyle,
   formatTime,
   currentTime,
   duration,
-  deleteOverlay,
+  deleteSelected, // ✅ Combined delete function
   selectedId,
   trimStart,
   setTrimStart,
@@ -22,13 +22,29 @@ function ToolsSidebar({
   applyTrim,
   resetTrim,
   isTrimmed,
-  // NEW: Cut props
+  // Cut props
   cutPoints,
   addCutPoint,
   removeCutPoint,
   applyCut,
   resetCut,
 }) {
+  
+  // ✅ FIXED: Better selected type detection
+  const getSelectedType = () => {
+    if (!selectedId) return null;
+    
+    // Agar selectedId string hai aur 'image-' se start hota hai
+    if (typeof selectedId === 'string' && selectedId.startsWith('image-')) {
+      return 'image';
+    }
+    
+    // Otherwise text assume karo (number ya koi aur type)
+    return 'text';
+  };
+
+  const selectedType = getSelectedType();
+
   return (
     <div className="tools-sidebar" style={{ padding: "10px", width: "250px", borderLeft: "1px solid #ccc" }}>
       <h3>Tools</h3>
@@ -41,7 +57,7 @@ function ToolsSidebar({
             style={{ 
               padding: "5px 10px", 
               cursor: "pointer",
-              background: activeTool === tool ? "#ff4d94" : "#bbbbccff",
+              background: activeTool === tool ? "#007bff" : "#f0f0f0",
               color: activeTool === tool ? "white" : "black",
               border: "1px solid #ccc"
             }}
@@ -260,15 +276,28 @@ function ToolsSidebar({
         </div>
       )}
 
-      {/* Delete button */}
+      {/* ✅ FIXED: Combined Delete Button */}
       {selectedId && (
         <div style={{ marginTop: "15px" }}>
           <button
-            onClick={deleteOverlay}
-            style={{ width: "100%", padding: "8px", background: "red", color: "white", cursor: "pointer" }}
+            onClick={deleteSelected}
+            style={{ 
+              width: "100%", 
+              padding: "10px", 
+              background: "red", 
+              color: "white", 
+              cursor: "pointer",
+              border: "none",
+              borderRadius: "5px",
+              fontSize: "14px",
+              fontWeight: "bold"
+            }}
           >
-            Delete Selected Text
+            🗑️ Delete Selected {selectedType === 'image' ? 'Image' : 'Text'}
           </button>
+          <div style={{ fontSize: "11px", color: "#666", textAlign: "center", marginTop: "5px" }}>
+            or press <kbd>Delete</kbd> key
+          </div>
         </div>
       )}
 
@@ -283,6 +312,17 @@ function ToolsSidebar({
           <label>Duration:</label>
           <span style={{ marginLeft: "5px" }}>{formatTime(duration)}</span>
         </div>
+        
+        {/* Selection Info */}
+        {selectedId && (
+          <div className="property">
+            <label>Selected:</label>
+            <span style={{ marginLeft: "5px", color: "#007bff", fontWeight: "bold" }}>
+              {selectedType === 'image' ? 'Image' : 'Text Overlay'}
+            </span>
+          </div>
+        )}
+        
         {activeTool === "trim" && (
           <>
             <div className="property">

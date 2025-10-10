@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import Header from "../components/Header";
-import MediaSidebar from "../components/MediaSidebar";
+import MediaSidebar from "../components/MediaSidebar/MediaSidebar";
 import CanvasArea from "../components/CanvasArea";
 import ToolsSidebar from "../components/ToolsSidebar";
 import Timeline from "../components/Timeline";
@@ -47,6 +47,11 @@ function Editor() {
   const videoRef = useRef(null);
   const fileInputRef = useRef(null);
 
+  //image upload
+  const [imageOverlays, setImageOverlays] = useState([]);
+  const [showImageUpload, setShowImageUpload] = useState(false);
+  const [imageUrl, setImageUrl] = useState("");
+
   // Sample media data
   const mediaItems = {
     videos: [
@@ -70,6 +75,80 @@ function Editor() {
       { id: 3, name: "Sticker", thumbnail: "😂", duration: "" },
     ],
   };
+
+  // NEW: Handle media selection for different types
+  const handleMediaSelect = (mediaItem) => {
+    console.log("Media selected:", mediaItem);
+    
+    switch (mediaItem.type) {
+      case 'video':
+        setVideoSource(mediaItem.source);
+        break;
+      case 'image':
+        addImageOverlay(mediaItem.source, mediaItem.name);
+        break;
+      case 'audio':
+        // Handle audio (you can implement audio tracks later)
+        alert(`Audio selected: ${mediaItem.name} - Audio functionality coming soon!`);
+        break;
+      case 'element':
+        // Handle elements (shapes, icons, etc.)
+        alert(`Element selected: ${mediaItem.name} - Element functionality coming soon!`);
+        break;
+      default:
+        console.log("Unknown media type:", mediaItem.type);
+    }
+  };
+
+  // NEW: Add image overlay to canvas
+  const addImageOverlay = (imageSource, imageName = "Image") => {
+    const newImageOverlay = {
+      id: Date.now(),
+      type: 'image',
+      source: imageSource,
+      name: imageName,
+      position: { x: 50, y: 50 }, // Center position
+      size: { width: 200, height: 150 }, // Default size
+      opacity: 1,
+      rotation: 0
+    };
+    
+    setImageOverlays(prev => [...prev, newImageOverlay]);
+  };
+
+  // NEW: Handle image upload
+  const handleImageUpload = (event) => {
+    const file = event.target.files[0];
+    if (file && file.type.startsWith('image/')) {
+      const imageURL = URL.createObjectURL(file);
+      addImageOverlay(imageURL, file.name);
+      setShowImageUpload(false);
+    }
+  };
+
+  // NEW: Handle URL image
+  const handleUrlImageAdd = () => {
+    if (imageUrl.trim()) {
+      addImageOverlay(imageUrl, "URL Image");
+      setImageUrl("");
+      setShowImageUpload(false);
+    }
+  };
+
+  // NEW: Delete image overlay
+const deleteImageOverlay = (id) => {
+  setImageOverlays(prev => prev.filter(img => img.id !== id));
+  setSelectedId(null); // Selection clear karo
+};
+  // NEW: Update image overlay position/size
+  const updateImageOverlay = (id, updates) => {
+    setImageOverlays(prev => 
+      prev.map(img => 
+        img.id === id ? { ...img, ...updates } : img
+      )
+    );
+  };
+
 
   // Initialize trim times when duration is available
   useEffect(() => {
@@ -277,18 +356,56 @@ function Editor() {
     }
     return null;
   };
+// Editor.jsx mein ye function fix karo
+const deleteSelected = () => {
+  if (!selectedId) return;
+  
+  console.log("Deleting selected:", selectedId, typeof selectedId);
+  
+  // Agar selectedId string hai aur 'image-' se start hota hai
+  if (typeof selectedId === 'string' && selectedId.startsWith('image-')) {
+    // Image delete karo
+    const imageId = parseInt(selectedId.replace('image-', ''));
+    deleteImageOverlay(imageId);
+    console.log("Deleted image:", imageId);
+  } else {
+    // Text delete karo (selectedId number ya koi aur type)
+    deleteOverlay();
+    console.log("Deleted text overlay");
+  }
+  
+  setSelectedId(null); // Selection clear karo
+};
 
-  // Keyboard listener for Delete key
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === "Delete") {
-        deleteOverlay();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedId]);
+// Keyboard listener ko bhi update karo
+useEffect(() => {
+  const handleKeyDown = (e) => {
+    if ((e.key === "Delete" || e.key === "Backspace") && selectedId) {
+      e.preventDefault();
+      deleteSelected();
+    }
+  };
+  window.addEventListener("keydown", handleKeyDown);
+  return () => window.removeEventListener("keydown", handleKeyDown);
+}, [selectedId]);
 
+// Editor.jsx mein ye functions add karo
+const handleAddVideo = (startTime) => {
+  // File input trigger karo ya video selection dialog show karo
+  fileInputRef.current?.click();
+  console.log("Add video at time:", startTime);
+  // Yahan aap startTime use kar sakte hain new video ko position karne ke liye
+};
+
+const handleAddAudio = (startTime) => {
+  alert(`Add audio functionality at ${startTime}s - Coming soon!`);
+  // Yahan audio add karne ka logic implement karo
+};
+
+const handleAddImage = (startTime) => {
+  alert(`Add image functionality at ${startTime}s - Click on Images tab in Media Sidebar to add images`);
+  // Yahan image add karne ka logic implement karo
+};
   return (
     <div className="app">
       <Header />
@@ -298,23 +415,28 @@ function Editor() {
           mediaType={mediaType}
           setMediaType={setMediaType}
           selectTool={selectTool}
+          onMediaSelect={handleMediaSelect}
         />
 
         <div className="editor-main">
-          <CanvasArea
-            videoRef={videoRef}
-            videoSource={videoSource}
-            canvasOptions={canvasOptions}
-            textOverlays={textOverlays}
-            setTextOverlays={setTextOverlays}
-            selectedId={selectedId}
-            setSelectedId={setSelectedId}
-            handleTimeUpdate={handleTimeUpdate}
-            handleLoadedMetadata={handleLoadedMetadata}
-            // Pass processing info to CanvasArea for export
-            processingInfo={getVideoProcessingInfo()}
-          />
-
+// In Editor.jsx, make sure to pass the image overlay props to CanvasArea
+<CanvasArea
+  videoRef={videoRef}
+  videoSource={videoSource}
+  canvasOptions={canvasOptions}
+  textOverlays={textOverlays}
+  setTextOverlays={setTextOverlays}
+  selectedId={selectedId}
+  setSelectedId={setSelectedId}
+  handleTimeUpdate={handleTimeUpdate}
+  handleLoadedMetadata={handleLoadedMetadata}
+  processingInfo={getVideoProcessingInfo()}
+  // NEW: Image overlay props
+  imageOverlays={imageOverlays}
+  setImageOverlays={setImageOverlays}
+  deleteImageOverlay={deleteImageOverlay}
+  updateImageOverlay={updateImageOverlay}
+/>
           <div className="canvas-controls">
             <h3>Canvas</h3>
             <button
@@ -386,6 +508,10 @@ function Editor() {
   isCut={isCut}
   setTrimStart={setTrimStart}
   setTrimEnd={setTrimEnd}
+  onAddVideo={handleAddVideo}
+  onAddAudio={handleAddAudio}
+  onAddImage={handleAddImage}
+  imageOverlays={imageOverlays}
 />
 
           <Controls
@@ -398,37 +524,36 @@ function Editor() {
             handleVideoUpload={handleVideoUpload}
           />
         </div>
-
-        <ToolsSidebar
-          activeTool={activeTool}
-          selectTool={selectTool}
-          showTextEditor={showTextEditor}
-          setShowTextEditor={setShowTextEditor}
-          newText={newText}
-          setNewText={setNewText}
-          addTextOverlay={addTextOverlay}
-          textStyle={textStyle}
-          setTextStyle={setTextStyle}
-          formatTime={formatTime}
-          currentTime={currentTime}
-          duration={duration}
-          deleteOverlay={deleteOverlay}
-          selectedId={selectedId}
-          // Trim props
-          trimStart={trimStart}
-          setTrimStart={setTrimStart}
-          trimEnd={trimEnd}
-          setTrimEnd={setTrimEnd}
-          applyTrim={applyTrim}
-          resetTrim={resetTrim}
-          isTrimmed={isTrimmed}
-          // NEW: Cut props
-          cutPoints={cutPoints}
-          addCutPoint={addCutPoint}
-          removeCutPoint={removeCutPoint}
-          applyCut={applyCut}
-          resetCut={resetCut}
-        />
+<ToolsSidebar
+  activeTool={activeTool}
+  selectTool={selectTool}
+  showTextEditor={showTextEditor}
+  setShowTextEditor={setShowTextEditor}
+  newText={newText}
+  setNewText={setNewText}
+  addTextOverlay={addTextOverlay}
+  textStyle={textStyle}
+  setTextStyle={setTextStyle}
+  formatTime={formatTime}
+  currentTime={currentTime}
+  duration={duration}
+  deleteSelected={deleteSelected} // ✅ NEW: Combined delete function
+  selectedId={selectedId}
+  // Trim props
+  trimStart={trimStart}
+  setTrimStart={setTrimStart}
+  trimEnd={trimEnd}
+  setTrimEnd={setTrimEnd}
+  applyTrim={applyTrim}
+  resetTrim={resetTrim}
+  isTrimmed={isTrimmed}
+  // Cut props
+  cutPoints={cutPoints}
+  addCutPoint={addCutPoint}
+  removeCutPoint={removeCutPoint}
+  applyCut={applyCut}
+  resetCut={resetCut}
+/>
       </div>
     </div>
   );

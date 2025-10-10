@@ -1,5 +1,5 @@
-// src/utils/videoExporter.js
-export async function exportVideo({ videoRef, textOverlays, canvasOptions, processingInfo }) {
+// In VideoUploader.jsx, update the exportVideo function
+export async function exportVideo({ videoRef, textOverlays, canvasOptions, processingInfo, imageOverlays = [] }) {
   if (!videoRef.current) throw new Error("Video element not found");
 
   const video = videoRef.current;
@@ -30,19 +30,17 @@ export async function exportVideo({ videoRef, textOverlays, canvasOptions, proce
 
     let startTime = 0;
     let endTime = video.duration;
-    let segments = [];
 
     // Set up processing based on type
     if (processingInfo) {
       if (processingInfo.type === 'trim') {
         startTime = processingInfo.start;
         endTime = processingInfo.end;
-      } else if (processingInfo.type === 'cut') {     
-        segments = processingInfo.segments;
-        // For cut, we'll process the first segment (in a real app, you'd concatenate all segments)
-        if (segments.length > 0) {
-          startTime = segments[0].start;
-          endTime = segments[0].end;
+      } else if (processingInfo.type === 'cut') {
+        // For cut, use the first segment
+        if (processingInfo.segments.length > 0) {
+          startTime = processingInfo.segments[0].start;
+          endTime = processingInfo.segments[0].end;
         }
       }
     }
@@ -50,7 +48,18 @@ export async function exportVideo({ videoRef, textOverlays, canvasOptions, proce
     video.currentTime = startTime;
     video.play();
 
-    const draw = () => {
+    // Preload images
+    const imagePromises = imageOverlays.map(image => {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = image.source;
+      });
+    });
+
+    const draw = async () => {
       if (!video.paused && !video.ended && video.currentTime <= endTime) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -75,6 +84,30 @@ export async function exportVideo({ videoRef, textOverlays, canvasOptions, proce
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         ctx.restore();
 
+        // Draw image overlays
+        for (const image of imageOverlays) {
+          try {
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            await new Promise((resolve) => {
+              img.onload = resolve;
+              img.onerror = resolve;
+              img.src = image.source;
+            });
+            
+            if (img.complete && img.naturalWidth !== 0) {
+              ctx.save();
+              const imgX = (image.position.x / 100) * canvas.width - (image.size.width / 2);
+              const imgY = (image.position.y / 100) * canvas.height - (image.size.height / 2);
+              ctx.globalAlpha = image.opacity || 1;
+              ctx.drawImage(img, imgX, imgY, image.size.width, image.size.height);
+              ctx.restore();
+            }
+          } catch (error) {
+            console.error("Error drawing image:", error);
+          }
+        }
+
         // Draw text overlays
         textOverlays.forEach((o) => {
           ctx.fillStyle = o.style.color;
@@ -96,7 +129,10 @@ export async function exportVideo({ videoRef, textOverlays, canvasOptions, proce
       }
     };
 
-    draw();
+    // Wait for images to load before starting draw loop
+    Promise.all(imagePromises).then(() => {
+      draw();
+    });
 
     // Fallback stop condition
     video.onended = () => {

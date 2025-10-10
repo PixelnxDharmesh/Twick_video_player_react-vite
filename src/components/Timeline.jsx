@@ -13,15 +13,24 @@ function Timeline({
   isTrimmed,
   isCut,
   setTrimStart,
-  setTrimEnd
+  setTrimEnd,
+  // NEW: Props for adding new media
+  onAddVideo,
+  onAddAudio,
+  onAddImage,
+  imageOverlays = []
 }) {
   const trackRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
   const [resizing, setResizing] = useState(null);
+  const [showAddMenu, setShowAddMenu] = useState(false);
+  const [addMenuPosition, setAddMenuPosition] = useState({ trackId: null, position: 0 });
+  
   const [tracks, setTracks] = useState([
     { id: 1, type: 'video', name: 'Video Track', clips: [] },
     { id: 2, type: 'audio', name: 'Audio Track', clips: [] },
-    { id: 3, type: 'text', name: 'Text Overlays', clips: [] }
+    { id: 3, type: 'text', name: 'Text Overlays', clips: [] },
+    { id: 4, type: 'image', name: 'Image Overlays', clips: [] } // NEW: Image track
   ]);
 
   // Initialize tracks when video loads
@@ -59,13 +68,26 @@ function Timeline({
         overlayId: overlay.id
       }));
 
+      // Image overlays as clips
+      const imageClips = imageOverlays.map((image, index) => ({
+        id: `image-${image.id}`,
+        type: 'image',
+        start: 0,
+        end: duration,
+        duration: duration,
+        name: `Image: ${image.name.substring(0, 12)}${image.name.length > 12 ? '...' : ''}`,
+        source: image.source,
+        overlayId: image.id
+      }));
+
       setTracks([
         { id: 1, type: 'video', name: 'Video Track', clips: [videoClip] },
         { id: 2, type: 'audio', name: 'Audio Track', clips: [audioClip] },
-        { id: 3, type: 'text', name: 'Text Overlays', clips: textClips }
+        { id: 3, type: 'text', name: 'Text Overlays', clips: textClips },
+        { id: 4, type: 'image', name: 'Image Overlays', clips: imageClips }
       ]);
     }
-  }, [duration, videoSource, textOverlays]);
+  }, [duration, videoSource, textOverlays, imageOverlays]);
 
   // Update video playback when clips are resized
   useEffect(() => {
@@ -181,6 +203,40 @@ function Timeline({
     });
   };
 
+  // NEW: Handle add button click
+  const handleAddButtonClick = (trackId, e) => {
+    e.stopPropagation();
+    
+    const rect = trackRef.current.getBoundingClientRect();
+    const offsetX = e.clientX - rect.left;
+    const position = (offsetX / rect.width) * 100;
+    
+    setAddMenuPosition({ trackId, position });
+    setShowAddMenu(true);
+  };
+
+  // NEW: Handle media addition
+  const handleAddMedia = (mediaType) => {
+    const { trackId, position } = addMenuPosition;
+    const startTime = (position / 100) * duration;
+    
+    switch (mediaType) {
+      case 'video':
+        if (onAddVideo) onAddVideo(startTime);
+        break;
+      case 'audio':
+        if (onAddAudio) onAddAudio(startTime);
+        break;
+      case 'image':
+        if (onAddImage) onAddImage(startTime);
+        break;
+      default:
+        console.log('Unknown media type:', mediaType);
+    }
+    
+    setShowAddMenu(false);
+  };
+
   const formatTimeForRuler = (time) => {
     if (!time || isNaN(time)) return "0:00";
     const minutes = Math.floor(time / 60);
@@ -259,6 +315,12 @@ function Timeline({
           background: "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
           border: "2px solid #3aa8e6"
         };
+      case 'image':
+        return {
+          ...baseStyle,
+          background: "linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)",
+          border: "2px solid #ff6b6b"
+        };
       default:
         return baseStyle;
     }
@@ -269,13 +331,14 @@ function Timeline({
       case 'video': return '🎬';
       case 'audio': return '🎵';
       case 'text': return '📝';
+      case 'image': return '🖼️';
       default: return '●';
     }
   };
 
   const RenderResizeHandles = ({ clip, trackId }) => (
     <>
-      {/* Left Resize Handle - LARGER and more visible */}
+      {/* Left Resize Handle */}
       <div
         className="resize-handle"
         data-track-id={trackId}
@@ -304,7 +367,7 @@ function Timeline({
         ⋮
       </div>
       
-      {/* Right Resize Handle - LARGER and more visible */}
+      {/* Right Resize Handle */}
       <div
         className="resize-handle"
         data-track-id={trackId}
@@ -334,6 +397,42 @@ function Timeline({
       </div>
     </>
   );
+
+  // NEW: Render Add Button for each track
+  const RenderAddButton = ({ track }) => {
+    // Find the end position of the last clip in this track
+    const lastClip = track.clips[track.clips.length - 1];
+    const endPosition = lastClip ? (lastClip.end / duration) * 100 : 0;
+    
+    return (
+      <button
+        onClick={(e) => handleAddButtonClick(track.id, e)}
+        style={{
+          position: "absolute",
+          left: `${endPosition}%`,
+          top: "50%",
+          transform: "translate(-50%, -50%)",
+          width: "24px",
+          height: "24px",
+          background: "#28a745",
+          color: "white",
+          border: "none",
+          borderRadius: "50%",
+          cursor: "pointer",
+          fontSize: "16px",
+          fontWeight: "bold",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 25,
+          boxShadow: "0 2px 4px rgba(0,0,0,0.3)"
+        }}
+        title={`Add ${track.type} at ${formatTimeForRuler((endPosition / 100) * duration)}`}
+      >
+        +
+      </button>
+    );
+  };
 
   // Get current clip boundaries for video playback
   const getCurrentClipBoundaries = () => {
@@ -458,9 +557,10 @@ function Timeline({
             className="timeline-track"
             style={{
               display: "flex",
-              height: "70px", // Increased height for better resize handle visibility
+              height: "70px",
               borderBottom: trackIndex < tracks.length - 1 ? "1px solid #333" : "none",
-              background: trackIndex % 2 === 0 ? "#2a2a2a" : "#252525"
+              background: trackIndex % 2 === 0 ? "#2a2a2a" : "#252525",
+              position: "relative"
             }}
           >
             {/* Track Header */}
@@ -540,6 +640,9 @@ function Timeline({
                 </div>
               ))}
 
+              {/* NEW: Add Button for each track */}
+              <RenderAddButton track={track} />
+
               {/* Playhead */}
               <div
                 className="playhead"
@@ -559,6 +662,98 @@ function Timeline({
         ))}
       </div>
 
+      {/* NEW: Add Media Menu */}
+      {showAddMenu && (
+        <div
+          style={{
+            position: "absolute",
+            left: `${addMenuPosition.position}%`,
+            top: "50%",
+            transform: "translate(-50%, -50%)",
+            background: "#333",
+            border: "1px solid #555",
+            borderRadius: "8px",
+            padding: "10px",
+            zIndex: 100,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
+            minWidth: "120px"
+          }}
+        >
+          <div style={{ color: "white", fontSize: "12px", marginBottom: "8px", fontWeight: "bold" }}>
+            Add Media at {formatTimeForRuler((addMenuPosition.position / 100) * duration)}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+            <button
+              onClick={() => handleAddMedia('video')}
+              style={{
+                padding: "8px 12px",
+                background: "#667eea",
+                color: "white",
+                border: "none",
+                borderRadius: "4px",
+                cursor: "pointer",
+                fontSize: "11px",
+                display: "flex",
+                alignItems: "center",
+                gap: "5px"
+              }}
+            >
+              🎬 Add Video
+            </button>
+            <button
+              onClick={() => handleAddMedia('audio')}
+              style={{
+                padding: "8px 12px",
+                background: "#f093fb",
+                color: "white",
+                border: "none",
+                borderRadius: "4px",
+                cursor: "pointer",
+                fontSize: "11px",
+                display: "flex",
+                alignItems: "center",
+                gap: "5px"
+              }}
+            >
+              🎵 Add Audio
+            </button>
+            <button
+              onClick={() => handleAddMedia('image')}
+              style={{
+                padding: "8px 12px",
+                background: "#ff9a9e",
+                color: "white",
+                border: "none",
+                borderRadius: "4px",
+                cursor: "pointer",
+                fontSize: "11px",
+                display: "flex",
+                alignItems: "center",
+                gap: "5px"
+              }}
+            >
+              🖼️ Add Image
+            </button>
+          </div>
+          <button
+            onClick={() => setShowAddMenu(false)}
+            style={{
+              marginTop: "8px",
+              padding: "5px 10px",
+              background: "#6c757d",
+              color: "white",
+              border: "none",
+              borderRadius: "4px",
+              cursor: "pointer",
+              fontSize: "10px",
+              width: "100%"
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
       {/* Timeline Footer */}
       <div style={{ 
         display: "flex", 
@@ -569,7 +764,7 @@ function Timeline({
         fontSize: "12px"
       }}>
         <div>
-          • Click to seek • Drag <strong>⋮</strong> handles to resize clips • Video plays within clip boundaries only
+          • Click to seek • Drag <strong>⋮</strong> handles to resize • Click <strong>+</strong> to add media
         </div>
         <div style={{ color: "#4CAF50", fontWeight: "bold" }}>
           Active: {formatTimeForRuler(getCurrentClipBoundaries().end - getCurrentClipBoundaries().start)}
@@ -580,361 +775,3 @@ function Timeline({
 }
 
 export default Timeline;
-
-
-
-// import { useRef, useState } from "react";
-
-// function Timeline({ currentTime, duration, setCurrentTime, videoRef, videoSource }) {
-//   const trackRef = useRef(null);
-//   const [isDragging, setIsDragging] = useState(false);
-
-//   const updateTimeFromMouse = (e) => {
-//     if (!trackRef.current || !duration) return;
-
-//     const rect = trackRef.current.getBoundingClientRect();
-//     const offsetX = e.clientX - rect.left;
-//     const percent = Math.max(0, Math.min(1, offsetX / rect.width));
-//     const newTime = percent * duration;
-
-//     setCurrentTime(newTime);
-//     if (videoRef.current) {
-//       videoRef.current.currentTime = newTime;
-//     }
-//   };
-
-//   const handleMouseDown = (e) => {
-//     setIsDragging(true);
-//     updateTimeFromMouse(e);
-//   };
-
-//   const handleMouseMove = (e) => {
-//     if (isDragging) {
-//       updateTimeFromMouse(e);
-//     }
-//   };
-
-//   const handleMouseUp = () => {
-//     setIsDragging(false);
-//   };
-
-//   const formatTime = (time) => {
-//     if (!time || isNaN(time)) return "0:00";
-//     const minutes = Math.floor(time / 60);
-//     const seconds = Math.floor(time % 60);
-//     return `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
-//   };
-
-//   // Create gradient background for video track
-//   const getVideoTrackStyle = () => {
-//     if (!videoSource) {
-//       return {
-//         background: "#333",
-//         color: "#888"
-//       };
-//     }
-
-//     return {
-//       background: "linear-gradient(90deg, #4CAF50, #2196F3, #FF9800, #E91E63)",
-//       backgroundSize: "400% 100%",
-//       animation: "gradientShift 3s ease infinite",
-//       color: "white",
-//       fontWeight: "bold"
-//     };
-//   };
-
-//   return (
-//     <div
-//       className="timeline-container"
-//       onMouseMove={handleMouseMove}
-//       onMouseUp={handleMouseUp}
-//       onMouseLeave={handleMouseUp}
-//       style={{ 
-//         padding: "15px 0",
-//         background: "#1a1a1a",
-//         borderRadius: "8px",
-//         margin: "10px 0"
-//       }}
-//     >
-//       <style>
-//         {`
-//           @keyframes gradientShift {
-//             0% { background-position: 0% 50%; }
-//             50% { background-position: 100% 50%; }
-//             100% { background-position: 0% 50%; }
-//           }
-//         `}
-//       </style>
-
-//       {/* Time Ruler */}
-//       <div className="time-ruler" style={{ 
-//         display: "flex", 
-//         justifyContent: "space-between", 
-//         fontSize: "12px", 
-//         color: "#ccc",
-//         marginBottom: "10px",
-//         padding: "0 15px",
-//         fontWeight: "bold"
-//       }}>
-//         <span>0:00</span>
-//         <span>{formatTime(duration / 4)}</span>
-//         <span>{formatTime(duration / 2)}</span>
-//         <span>{formatTime(duration * 3/4)}</span>
-//         <span>{formatTime(duration)}</span>
-//       </div>
-
-//       {/* Main Timeline Track */}
-//       <div
-//         className="timeline-track"
-//         ref={trackRef}
-//         onMouseDown={handleMouseDown}
-//         style={{ 
-//           position: "relative", 
-//           height: "80px", 
-//           background: "#2d2d2d", 
-//           borderRadius: "6px",
-//           overflow: "hidden",
-//           cursor: "pointer",
-//           margin: "0 10px",
-//           border: "1px solid #444"
-//         }}
-//       >
-//         {/* Video Track - Full Width Preview */}
-//         <div 
-//           className="video-track" 
-//           style={{
-//             height: "60px",
-//             ...getVideoTrackStyle(),
-//             display: "flex",
-//             alignItems: "center",
-//             padding: "0 15px",
-//             fontSize: "14px",
-//             position: "relative",
-//             overflow: "hidden"
-//           }}
-//         >
-//           {videoSource ? (
-//             <>
-//               {/* Animated moving stripes to simulate video content */}
-//               <div style={{
-//                 position: "absolute",
-//                 top: 0,
-//                 left: 0,
-//                 right: 0,
-//                 bottom: 0,
-//                 background: `repeating-linear-gradient(
-//                   45deg,
-//                   transparent,
-//                   transparent 10px,
-//                   rgba(255,255,255,0.1) 10px,
-//                   rgba(255,255,255,0.1) 20px
-//                 )`,
-//                 animation: "moveStripes 2s linear infinite"
-//               }} />
-              
-//               <style>
-//                 {`
-//                   @keyframes moveStripes {
-//                     0% { transform: translateX(0); }
-//                     100% { transform: translateX(20px); }
-//                   }
-//                 `}
-//               </style>
-
-//               <div style={{
-//                 display: "flex",
-//                 alignItems: "center",
-//                 gap: "10px",
-//                 zIndex: 2,
-//                 position: "relative"
-//               }}>
-//                 <span>🎬</span>
-//                 <span>Video Preview - {formatTime(duration)}</span>
-//                 <span style={{
-//                   background: "rgba(0,0,0,0.7)",
-//                   padding: "2px 8px",
-//                   borderRadius: "12px",
-//                   fontSize: "11px"
-//                 }}>
-//                   Click to scrub
-//                 </span>
-//               </div>
-//             </>
-//           ) : (
-//             <div style={{
-//               display: "flex",
-//               alignItems: "center",
-//               gap: "8px"
-//             }}>
-//               <span>📹</span>
-//               <span>Upload video to see preview</span>
-//             </div>
-//           )}
-//         </div>
-
-//         {/* Audio Track */}
-//         <div className="audio-track" style={{
-//           height: "20px",
-//           background: "#252525",
-//           borderTop: "1px solid #444",
-//           display: "flex",
-//           alignItems: "center",
-//           padding: "0 15px",
-//           color: "#ccc",
-//           fontSize: "12px"
-//         }}>
-//           <span>🔊</span>
-//           <span style={{ marginLeft: "8px" }}>
-//             {videoSource ? "Audio Track - " + formatTime(duration) : "No audio"}
-//           </span>
-//         </div>
-
-//         {/* Playhead */}
-//         <div
-//           className="playhead"
-//           style={{
-//             position: "absolute",
-//             top: 0,
-//             bottom: 0,
-//             width: "3px",
-//             background: "red",
-//             left: `${(currentTime / duration) * 100}%`,
-//             cursor: "pointer",
-//             zIndex: 10,
-//             boxShadow: "0 0 8px rgba(255, 0, 0, 0.8)",
-//             transform: "translateX(-1.5px)"
-//           }}
-//         >
-//           <div style={{
-//             position: "absolute",
-//             top: "-6px",
-//             left: "50%",
-//             transform: "translateX(-50%)",
-//             width: "0",
-//             height: "0",
-//             borderLeft: "6px solid transparent",
-//             borderRight: "6px solid transparent",
-//             borderBottom: "6px solid red"
-//           }} />
-//         </div>
-
-//         {/* Current Time Indicator */}
-//         <div style={{
-//           position: "absolute",
-//           top: "-30px",
-//           left: `${(currentTime / duration) * 100}%`,
-//           transform: "translateX(-50%)",
-//           background: "red",
-//           color: "white",
-//           padding: "3px 8px",
-//           borderRadius: "4px",
-//           fontSize: "11px",
-//           fontWeight: "bold",
-//           whiteSpace: "nowrap",
-//           zIndex: 20
-//         }}>
-//           {formatTime(currentTime)}
-//         </div>
-//       </div>
-
-//       {/* Timeline Footer */}
-//       <div style={{
-//         display: "flex",
-//         justifyContent: "space-between",
-//         alignItems: "center",
-//         marginTop: "10px",
-//         padding: "0 15px",
-//         fontSize: "12px",
-//         color: "#999"
-//       }}>
-//         <span>Drag timeline to navigate video</span>
-//         <span>Total: {formatTime(duration)}</span>
-//       </div>
-//     </div>
-//   );
-// }
-
-// export default Timeline;
-
-
-
-
-
-
-
-
-// import { useRef, useState } from "react";
-
-// function Timeline({ currentTime, duration, setCurrentTime, videoRef }) {
-//   const trackRef = useRef(null);
-//   const [isDragging, setIsDragging] = useState(false);
-
-//   // helper: calculate time based on mouse X
-//   const updateTimeFromMouse = (e) => {
-//     if (!trackRef.current || !duration) return;
-
-//     const rect = trackRef.current.getBoundingClientRect();
-//     const offsetX = e.clientX - rect.left;
-//     const percent = Math.max(0, Math.min(1, offsetX / rect.width));
-//     const newTime = percent * duration;
-
-//     setCurrentTime(newTime);
-//     if (videoRef.current) {
-//       videoRef.current.currentTime = newTime;
-//     }
-//   };
-
-//   const handleMouseDown = (e) => {
-//     setIsDragging(true);
-//     updateTimeFromMouse(e);
-//   };
-
-//   const handleMouseMove = (e) => {
-//     if (isDragging) {
-//       updateTimeFromMouse(e);
-//     }
-//   };
-
-//   const handleMouseUp = () => {
-//     setIsDragging(false);
-//   };
-
-//   return (
-//     <div
-//       className="timeline-container"
-//       onMouseMove={handleMouseMove}
-//       onMouseUp={handleMouseUp}
-//       onMouseLeave={handleMouseUp}
-//     >
-//       <div className="time-ruler">
-//         <span>0:00</span>
-//         <span>{Math.round(duration / 2)}s</span>
-//         <span>{Math.round(duration)}s</span>
-//       </div>
-
-//       <div
-//         className="timeline-track"
-//         ref={trackRef}
-//         onMouseDown={handleMouseDown}
-//         style={{ position: "relative", height: "40px", background: "#222" }}
-//       >
-//         {/* playhead */}
-//         <div
-//           className="playhead"
-//           style={{
-//             position: "absolute",
-//             top: 0,
-//             bottom: 0,
-//             width: "2px",
-//             background: "red",
-//             left: `${(currentTime / duration) * 100}%`,
-//             cursor: "pointer",
-//           }}
-//         />
-//         <div className="video-clip">Video Track</div>
-//         <div className="audio-clip">Audio Track</div>
-//       </div>
-//     </div>
-//   );
-// }
-// export default Timeline;

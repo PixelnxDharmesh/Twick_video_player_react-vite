@@ -11,7 +11,12 @@ function CanvasArea({
   setSelectedId,
   handleTimeUpdate,
   handleLoadedMetadata,
-  processingInfo, // NEW: Receive processing info (trim/cut)
+  processingInfo,
+  // NEW: Image overlay props with default values
+  imageOverlays = [], // Default empty array
+  setImageOverlays = () => {}, // Default empty function
+  deleteImageOverlay = () => {}, // Default empty function
+  updateImageOverlay = () => {} // Default empty function
 }) {
   const containerRef = useRef(null);
   const draggingRef = useRef(null);
@@ -118,12 +123,104 @@ function CanvasArea({
     document.removeEventListener("mouseup", onResizeEnd);
   };
 
+  // NEW: Image overlay drag and resize handlers
+const onImageMouseDown = (e, image) => {
+  e.stopPropagation();
+  setSelectedId(`image-${image.id}`); 
+    
+    const parentRect = containerRef.current.getBoundingClientRect();
+    draggingRef.current = {
+      type: 'image',
+      id: image.id,
+      startX: e.clientX,
+      startY: e.clientY,
+      startPos: image.position,
+    };
+    
+    document.addEventListener("mousemove", onImageDragMove);
+    document.addEventListener("mouseup", onImageDragEnd);
+  };
+
+  const onImageDragMove = (e) => {
+    if (!draggingRef.current || draggingRef.current.type !== 'image') return;
+    
+    const { id, startX, startY, startPos } = draggingRef.current;
+    const parentRect = containerRef.current.getBoundingClientRect();
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+
+    const xPercent = startPos.x + (dx / parentRect.width) * 100;
+    const yPercent = startPos.y + (dy / parentRect.height) * 100;
+
+    updateImageOverlay(id, { 
+      position: { 
+        x: Math.max(0, Math.min(100, xPercent)), 
+        y: Math.max(0, Math.min(100, yPercent)) 
+      } 
+    });
+  };
+
+  const onImageDragEnd = () => {
+    if (draggingRef.current?.type === 'image') {
+      draggingRef.current = null;
+    }
+    document.removeEventListener("mousemove", onImageDragMove);
+    document.removeEventListener("mouseup", onImageDragEnd);
+  };
+
+  // NEW: Image resize handlers
+  const onImageResizeMouseDown = (e, image, dir) => {
+    e.stopPropagation();
+    setSelectedId(`image-${image.id}`);
+
+    resizingRef.current = {
+      type: 'image',
+      id: image.id,
+      dir,
+      startX: e.clientX,
+      startY: e.clientY,
+      startSize: image.size,
+    };
+
+    document.addEventListener("mousemove", onImageResizeMove);
+    document.addEventListener("mouseup", onImageResizeEnd);
+  };
+
+  const onImageResizeMove = (e) => {
+    if (!resizingRef.current || resizingRef.current.type !== 'image') return;
+    
+    const r = resizingRef.current;
+    let newWidth = r.startSize.width;
+    let newHeight = r.startSize.height;
+
+    if (r.dir.includes("e")) newWidth = Math.max(50, r.startSize.width + (e.clientX - r.startX));
+    if (r.dir.includes("s")) newHeight = Math.max(50, r.startSize.height + (e.clientY - r.startY));
+    if (r.dir.includes("w")) newWidth = Math.max(50, r.startSize.width - (e.clientX - r.startX));
+    if (r.dir.includes("n")) newHeight = Math.max(50, r.startSize.height - (e.clientY - r.startY));
+
+    updateImageOverlay(r.id, { 
+      size: { width: newWidth, height: newHeight } 
+    });
+  };
+
+  const onImageResizeEnd = () => {
+    if (resizingRef.current?.type === 'image') {
+      resizingRef.current = null;
+    }
+    document.removeEventListener("mousemove", onImageResizeMove);
+    document.removeEventListener("mouseup", onImageResizeEnd);
+  };
+
   useEffect(() => {
     return () => {
       document.removeEventListener("mousemove", onDragMove);
       document.removeEventListener("mouseup", onDragEnd);
       document.removeEventListener("mousemove", onResizeMove);
       document.removeEventListener("mouseup", onResizeEnd);
+      document.removeEventListener("mousemove", onImageDragMove);
+      document.removeEventListener("mouseup", onImageDragEnd);
+      document.removeEventListener("mousemove", onImageResizeMove);
+      document.removeEventListener("mouseup", onImageResizeEnd);
     };
   }, []);
 
@@ -135,7 +232,8 @@ function CanvasArea({
         videoRef, 
         textOverlays, 
         canvasOptions,
-        processingInfo // NEW: Pass processing info to export
+        processingInfo,
+        imageOverlays // Pass image overlays to export
       });
       setRecordedUrl(url);
     } catch (err) {
@@ -167,7 +265,7 @@ function CanvasArea({
 
   const status = getStatusIndicator();
 
-  return (
+return (
     <div
       ref={containerRef}
       className="canvas-container"
@@ -217,6 +315,108 @@ function CanvasArea({
           </div>
         )}
 
+        {/* Image Overlays */}
+        {imageOverlays.map((image) => (
+          <div
+            key={image.id}
+            onMouseDown={(e) => onImageMouseDown(e, image)}
+            style={{
+              position: "absolute",
+              left: `${image.position.x}%`,
+              top: `${image.position.y}%`,
+              transform: "translate(-50%, -50%)",
+              width: `${image.size.width}px`,
+              height: `${image.size.height}px`,
+              outline: selectedId === `image-${image.id}` ? "2px dashed blue" : "none",
+              cursor: "move",
+              overflow: "hidden",
+              borderRadius: "4px"
+            }}
+          >
+            <img
+              src={image.source}
+              alt={image.name}
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "contain",
+                pointerEvents: "none",
+                opacity: image.opacity || 1
+              }}
+              onError={(e) => {
+                console.error("Image failed to load:", image.source);
+                e.target.style.display = 'none';
+              }}
+            />
+
+            {/* Resize Handles - ONLY SHOW WHEN SELECTED */}
+            {selectedId === `image-${image.id}` && (
+              <>
+                {/* Resize Handles */}
+                <div
+                  onMouseDown={(e) => onImageResizeMouseDown(e, image, 'nw')}
+                  style={{
+                    position: "absolute",
+                    top: "-5px",
+                    left: "-5px",
+                    width: "10px",
+                    height: "10px",
+                    background: "blue",
+                    borderRadius: "50%",
+                    cursor: "nwse-resize",
+                    border: "2px solid white"
+                  }}
+                />
+                <div
+                  onMouseDown={(e) => onImageResizeMouseDown(e, image, 'ne')}
+                  style={{
+                    position: "absolute",
+                    top: "-5px",
+                    right: "-5px",
+                    width: "10px",
+                    height: "10px",
+                    background: "blue",
+                    borderRadius: "50%",
+                    cursor: "nesw-resize",
+                    border: "2px solid white"
+                  }}
+                />
+                <div
+                  onMouseDown={(e) => onImageResizeMouseDown(e, image, 'se')}
+                  style={{
+                    position: "absolute",
+                    bottom: "-5px",
+                    right: "-5px",
+                    width: "10px",
+                    height: "10px",
+                    background: "blue",
+                    borderRadius: "50%",
+                    cursor: "nwse-resize",
+                    border: "2px solid white"
+                  }}
+                />
+                <div
+                  onMouseDown={(e) => onImageResizeMouseDown(e, image, 'sw')}
+                  style={{
+                    position: "absolute",
+                    bottom: "-5px",
+                    left: "-5px",
+                    width: "10px",
+                    height: "10px",
+                    background: "blue",
+                    borderRadius: "50%",
+                    cursor: "nesw-resize",
+                    border: "2px solid white"
+                  }}
+                />
+                
+                {/* ✅ REMOVED: Individual Delete Button - Now using ToolsSidebar delete button */}
+              </>
+            )}
+          </div>
+        ))}
+
+        {/* Text Overlays */}
         {textOverlays.map((overlay) => (
           <div
             key={overlay.id}
